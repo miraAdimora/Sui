@@ -1,222 +1,233 @@
-/*
-Disclaimer: Use of Unaudited Code for Educational Purposes Only
-This code is provided strictly for educational purposes and has not undergone any formal security audit. 
-It may contain errors, vulnerabilities, or other issues that could pose risks to the integrity of your system or data.
+module dacade_deepbook::saloon {
+// use sui::object::{Self, UID, ID};
+use std::string::{String};
+// use sui::coin::{Coin,split, put,take};
+use sui::balance::{Balance,zero};
+// use std::option::{none,some};
+use sui::sui::SUI;
+use sui::event;
 
-By using this code, you acknowledge and agree that:
-    - No Warranty: The code is provided "as is" without any warranty of any kind, either express or implied. The entire risk as to the quality and performance of the code is with you.
-    - Educational Use Only: This code is intended solely for educational and learning purposes. It is not intended for use in any mission-critical or production systems.
-    - No Liability: In no event shall the authors or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the use or performance of this code.
-    - Security Risks: The code may not have been tested for security vulnerabilities. It is your responsibility to conduct a thorough security review before using this code in any sensitive or production environment.
-    - No Support: The authors of this code may not provide any support, assistance, or updates. You are using the code at your own risk and discretion.
+//define errors codes
+const ONLYOWNER:u64=0;
+const ITEMEDOESNOTEXISTS:u64=1;
+// const MUSTBEREGISTERED:u64=2;
+// const INSUFFICIENTBALANCE:u64=3;
+// const ITEMALREADYSOLD:u64=4;
+// const ITEMALREADYRENTED:u64=5;
 
-Before using this code, it is recommended to consult with a qualified professional and perform a comprehensive security assessment. By proceeding to use this code, you agree to assume all associated risks and responsibilities.
-*/
+public struct Saloon has key, store {
+    id: UID,
+    saloonid:ID,
+    name: String,   
+    location: String,
+    saloon_url: String,
+    balance:Balance<SUI>,
+    saloons: vector<ServicesRendered>
+}
 
-#[lint_allow(self_transfer)]
-module dacade_deepbook::book {
-    use deepbook::clob_v2 as deepbook;
-    use deepbook::custodian_v2 as custodian;
-    use sui::sui::SUI;
-    use sui::tx_context::{TxContext, Self};
-    use sui::coin::{Coin, Self};
-    use sui::balance::{Self};
-    use sui::transfer::Self;
-    use sui::clock::Clock;
+public struct ServicesRendered has store, drop {
+    id:u64,
+    servicename: String,
+    servicedescription: String,
+    amount: u64
+}
 
-    const FLOAT_SCALING: u64 = 1_000_000_000;
+public struct AdminCap has key{
+    id:UID, //Unique identifier for the admin
+    saloonid:ID //The ID of the relief center associated with the admin
+}
+
+// Event struct when a farm item is added
+public struct ServiceAdded has copy,drop{
+    id:u64,
+    name:String
+}
+
+// public struct ServiceUpdated has copy, drop {
+//     name: String,
+//     // servicedescription: String,
+//     amount: u64,
+// }
+// struct for price update 
+public struct ServiceUpdated has copy,drop{
+    name:String,
+    description:String,
+    new_amount:u64
+}
 
 
-    public fun new_pool<Base, Quote>(payment: &mut Coin<SUI>, ctx: &mut TxContext) {
-        let balance = coin::balance_mut(payment);
-        let fee = balance::split(balance, 100 * 1_000_000_000);
-        let coin = coin::from_balance(fee, ctx);
 
-        deepbook::create_pool<Base, Quote>(
-            1 * FLOAT_SCALING,
-            1,
-            coin,
-            ctx
-        );
-    }
+// create farm
+public entry fun create_saloon( name: String, location: String, saloon_url: String,ctx: &mut TxContext ) {
+    let id=object::new(ctx);
+    let saloonid=object::uid_to_inner(&id);
 
-    public fun new_custodian_account(ctx: &mut TxContext) {
-        transfer::public_transfer(deepbook::create_account(ctx), tx_context::sender(ctx))
-    }
+        // Initialize a new farm object
+    let saloon = Saloon {
+        id,
+        saloonid:saloonid,
+        name,   
+        location,
+        saloon_url,
+        balance:zero<SUI>(),
+        saloons:vector::empty()
+        };
 
-    public fun make_base_deposit<Base, Quote>(pool: &mut deepbook::Pool<Base, Quote>, coin: Coin<Base>, account_cap: &custodian::AccountCap) {
-        deepbook::deposit_base(pool, coin, account_cap)
-    }
+  // Create the AdminCap associated with the farm
+    let admin_cap = AdminCap {
+        id: object::new(ctx),  // Generate a new UID for AdminCap
+        saloonid,  // Associate the farm ID
+        };
 
-    public fun make_quote_deposit<Base, Quote>(pool: &mut deepbook::Pool<Base, Quote>, coin: Coin<Quote>, account_cap: &custodian::AccountCap) {
-        deepbook::deposit_quote(pool, coin, account_cap)
-    }
+        // Transfer the admin capability to the sender
+        transfer::transfer(admin_cap, tx_context::sender(ctx));
+        
+        transfer::share_object(saloon);
+}
 
-    public fun withdraw_base<BaseAsset, QuoteAsset>(
-        pool: &mut deepbook::Pool<BaseAsset, QuoteAsset>,
-        quantity: u64,
-        account_cap: &custodian::AccountCap,
-        ctx: &mut TxContext
-    ) {
-        let base = deepbook::withdraw_base(pool, quantity, account_cap, ctx);
-        transfer::public_transfer(base, tx_context::sender(ctx));
-    }
+//add farm items to a farm
+public entry fun add_service_to_saloon(saloon:&mut Saloon,servicename:String,servicedescription:String,amount:u64,owner:&AdminCap){
 
-    public fun withdraw_quote<BaseAsset, QuoteAsset>(
-        pool: &mut deepbook::Pool<BaseAsset, QuoteAsset>,
-        quantity: u64,
-        account_cap: &custodian::AccountCap,
-        ctx: &mut TxContext
-    ) {
-        let quote = deepbook::withdraw_quote(pool, quantity, account_cap, ctx);
-        transfer::public_transfer(quote, tx_context::sender(ctx));
-    }
+    //verify that its only the admin can add items
+    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),ONLYOWNER);
+    let id:u64=saloon.saloons.length();
+    //create a new service
+    let service=ServicesRendered{
+        id,
+        servicename,
+        servicedescription,
+        amount,
+    };
+    saloon.saloons.push_back(service);
 
-    public fun place_limit_order<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        client_order_id: u64,
-        price: u64, 
-        quantity: u64, 
-        self_matching_prevention: u8,
-        is_bid: bool,
-        expire_timestamp: u64,
-        restriction: u8,
-        clock: &Clock,
-        account_cap: &custodian::AccountCap,
-        ctx: &mut TxContext
-    ): (u64, u64, bool, u64) {
-        deepbook::place_limit_order(
-            pool, 
-            client_order_id, 
-            price, 
-            quantity, 
-            self_matching_prevention, 
-            is_bid, 
-            expire_timestamp, 
-            restriction, 
-            clock, 
-            account_cap, 
-            ctx
-        )
-    }
+     event::emit(ServiceAdded{
+        name:servicename,
+        id
+    });
 
-    public fun place_base_market_order<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        account_cap: &custodian::AccountCap,
-        base_coin: Coin<Base>,
-        client_order_id: u64,
-        is_bid: bool,
-        clock: &Clock,
-        ctx: &mut TxContext,
-    ) {
-        let quote_coin = coin::zero<Quote>(ctx);
-        let quantity = coin::value(&base_coin);
-        place_market_order(
-            pool,
-            account_cap,
-            client_order_id,
-            quantity,
-            is_bid,
-            base_coin,
-            quote_coin,
-            clock,
-            ctx
-        )
-    }
+}
 
-    public fun place_quote_market_order<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        account_cap: &custodian::AccountCap,
-        quote_coin: Coin<Quote>,
-        client_order_id: u64,
-        is_bid: bool,
-        clock: &Clock,
-        ctx: &mut TxContext,
-    ) {
-        let base_coin = coin::zero<Base>(ctx);
-        let quantity = coin::value(&quote_coin);
-        place_market_order(
-            pool,
-            account_cap,
-            client_order_id,
-            quantity,
-            is_bid,
-            base_coin,
-            quote_coin,
-            clock,
-            ctx
-        )
-    }
 
-    fun place_market_order<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        account_cap: &custodian::AccountCap,
-        client_order_id: u64,
-        quantity: u64,
-        is_bid: bool,
-        base_coin: Coin<Base>,
-        quote_coin: Coin<Quote>,
-        clock: &Clock, // @0x6 hardcoded id of the Clock object
-        ctx: &mut TxContext,
-    ) {
-        let (base, quote) = deepbook::place_market_order(
-            pool, 
-            account_cap, 
-            client_order_id, 
-            quantity, 
-            is_bid, 
-            base_coin, 
-            quote_coin, 
-            clock, 
-            ctx
-        );
-        transfer::public_transfer(base, tx_context::sender(ctx));
-        transfer::public_transfer(quote, tx_context::sender(ctx));
-    }
+// update the price of an item in a farm
+public entry fun update_services(saloon:&mut Saloon,saloonid:u64,new_name: String,new_description:String, new_amount:u64,owner:&AdminCap){
 
-    public fun swap_exact_base_for_quote<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        client_order_id: u64,
-        account_cap: &custodian::AccountCap,
-        quantity: u64,
-        base_coin: Coin<Base>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        let quote_coin = coin::zero<Quote>(ctx);
-        let (base, quote, _) = deepbook::swap_exact_base_for_quote(
-            pool,
-            client_order_id,
-            account_cap,
-            quantity,
-            base_coin,
-            quote_coin,
-            clock,
-            ctx
-        );
-        transfer::public_transfer(base, tx_context::sender(ctx));
-        transfer::public_transfer(quote, tx_context::sender(ctx));
-    }
+    //check that its the owner performing the action
+    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),ONLYOWNER);
 
-    public fun swap_exact_quote_for_base<Base, Quote>(
-        pool: &mut deepbook::Pool<Base, Quote>,
-        account_cap: &custodian::AccountCap,
-        quote_coin: Coin<Quote>,
-        client_order_id: u64,
-        quantity: u64,
-        clock: &Clock,
-        ctx: &mut TxContext,
-    ) {
-        let (base, quote, _) = deepbook::swap_exact_quote_for_base(
-            pool,
-            client_order_id,
-            account_cap,
-            quantity,
-            clock,
-            quote_coin,
-            ctx
-        );
-        transfer::public_transfer(base, tx_context::sender(ctx));
-        transfer::public_transfer(quote, tx_context::sender(ctx));
-    }
+     //check that item exists
+    assert!(saloonid<=saloon.saloons.length(),ITEMEDOESNOTEXISTS);
+
+    saloon.saloons[saloonid].servicename=new_name;
+    saloon.saloons[saloonid].servicedescription=new_description;
+    saloon.saloons[saloonid].amount=new_amount;
+
+     event::emit(ServiceUpdated{
+        name:saloon.saloons[saloonid].servicename,
+        description:saloon.saloons[saloonid].servicedescription,
+        new_amount
+    });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
