@@ -230,7 +230,10 @@ public entry fun pay_for_service(saloon:&mut Saloon,serviceid:u64,amount:&mut Co
 }
 
 // get farm items details using the item id
-public fun view_saloon_details(saloon: &Saloon, saloonid: u64) : (u64, String, String, u64) {
+public fun view_services_details(saloon: &Saloon, saloonid: u64) : (u64, String, String, u64) {
+
+ //check if service is available
+   assert!(saloonid <= saloon.services.length(),SERVICEDOESNOTEXISTS);
     let service = &saloon.services[saloonid];
      (
         service.id,
