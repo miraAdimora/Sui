@@ -1,19 +1,17 @@
 module dacade_deepbook::saloon {
 // use sui::object::{Self, UID, ID};
 use std::string::{String};
-// use sui::coin::{Coin,split, put,take};
+use sui::coin::{Coin,split, put,take};
 use sui::balance::{Balance,zero};
 // use std::option::{none,some};
 use sui::sui::SUI;
 use sui::event;
 
 //define errors codes
-const ONLYOWNER:u64=0;
-const ITEMEDOESNOTEXISTS:u64=1;
-// const MUSTBEREGISTERED:u64=2;
-// const INSUFFICIENTBALANCE:u64=3;
-// const ITEMALREADYSOLD:u64=4;
-// const ITEMALREADYRENTED:u64=5;
+const EONLYOWNER:u64=0;
+const SERVICEDOESNOTEXISTS:u64=1;
+const INVALIDRATING:u64=2;
+const INSUFFICIENTBALANCE:u64=3;
 
 public struct Saloon has key, store {
     id: UID,
@@ -22,7 +20,8 @@ public struct Saloon has key, store {
     location: String,
     saloon_url: String,
     balance:Balance<SUI>,
-    saloons: vector<ServicesRendered>
+    services: vector<ServicesRendered>,
+    rates:vector<Rate>,
 }
 
 public struct ServicesRendered has store, drop {
@@ -31,6 +30,12 @@ public struct ServicesRendered has store, drop {
     servicedescription: String,
     amount: u64
 }
+
+public struct Rate has store,key{
+    id:UID,
+    rate:u64,
+    by:address
+    }
 
 public struct AdminCap has key{
     id:UID, //Unique identifier for the admin
@@ -45,19 +50,39 @@ public struct ServiceAdded has copy,drop{
 
 // public struct ServiceUpdated has copy, drop {
 //     name: String,
-//     // servicedescription: String,
+//     servicedescription: String,
 //     amount: u64,
 // }
 // struct for price update 
-public struct ServiceUpdated has copy,drop{
+public struct PriceUpdated has copy,drop{
     name:String,
-    description:String,
     new_amount:u64
+}
+public struct DescriptionUpdated has copy,drop{
+    name:String,
+    new_description:String
+}
+
+public struct RateAdded has copy,drop{
+    by:address,
+    rating:u64
 }
 
 
+public struct WithdrawAmount has copy,drop{
+      amount:u64,
+      recipient:address
+}
 
-// create farm
+public  struct Receipt has key, store {
+    id:UID,
+    service_id: u64,
+    amount_paid: u64,
+    user: address,
+    }
+
+
+// create saloon
 public entry fun create_saloon( name: String, location: String, saloon_url: String,ctx: &mut TxContext ) {
     let id=object::new(ctx);
     let saloonid=object::uid_to_inner(&id);
@@ -70,7 +95,8 @@ public entry fun create_saloon( name: String, location: String, saloon_url: Stri
         location,
         saloon_url,
         balance:zero<SUI>(),
-        saloons:vector::empty()
+        services:vector::empty(),
+        rates:vector::empty(),
         };
 
   // Create the AdminCap associated with the farm
@@ -85,12 +111,12 @@ public entry fun create_saloon( name: String, location: String, saloon_url: Stri
         transfer::share_object(saloon);
 }
 
-//add farm items to a farm
+//function that add service to a saloon
 public entry fun add_service_to_saloon(saloon:&mut Saloon,servicename:String,servicedescription:String,amount:u64,owner:&AdminCap){
 
-    //verify that its only the admin can add items
-    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),ONLYOWNER);
-    let id:u64=saloon.saloons.length();
+    //verify that its only the admin can add service
+    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),EONLYOWNER);
+    let id:u64=saloon.services.length();
     //create a new service
     let service=ServicesRendered{
         id,
@@ -98,7 +124,7 @@ public entry fun add_service_to_saloon(saloon:&mut Saloon,servicename:String,ser
         servicedescription,
         amount,
     };
-    saloon.saloons.push_back(service);
+    saloon.services.push_back(service);
 
      event::emit(ServiceAdded{
         name:servicename,
@@ -108,28 +134,141 @@ public entry fun add_service_to_saloon(saloon:&mut Saloon,servicename:String,ser
 }
 
 
-// update the price of an item in a farm
-public entry fun update_services(saloon:&mut Saloon,saloonid:u64,new_name: String,new_description:String, new_amount:u64,owner:&AdminCap){
+// update the price 
+public entry fun update_services_price(saloon:&mut Saloon,saloonid:u64, new_amount:u64,owner:&AdminCap){
 
     //check that its the owner performing the action
-    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),ONLYOWNER);
+    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),EONLYOWNER);
 
-     //check that item exists
-    assert!(saloonid<=saloon.saloons.length(),ITEMEDOESNOTEXISTS);
+     //check if service exisy
+    assert!(saloonid<=saloon.services.length(),SERVICEDOESNOTEXISTS);
 
-    saloon.saloons[saloonid].servicename=new_name;
-    saloon.saloons[saloonid].servicedescription=new_description;
-    saloon.saloons[saloonid].amount=new_amount;
+    saloon.services[saloonid].amount=new_amount;
 
-     event::emit(ServiceUpdated{
-        name:saloon.saloons[saloonid].servicename,
-        description:saloon.saloons[saloonid].servicedescription,
+     event::emit(PriceUpdated{
+        name:saloon.services[saloonid].servicename,
         new_amount
+    });
+}
+
+//update price
+public entry fun update_services_description(saloon:&mut Saloon,saloonid:u64,new_description:String,owner:&AdminCap){
+
+    //check that its the owner performing the action
+    assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),EONLYOWNER);
+
+     //check that sevice exists
+    assert!(saloonid<=saloon.services.length(),SERVICEDOESNOTEXISTS);
+
+    saloon.services[saloonid].servicedescription=new_description;
+
+     event::emit(DescriptionUpdated{
+        name:saloon.services[saloonid].servicename,
+        new_description
+        
     });
 }
 
 
 
+//function to rate a saloon
+public entry fun rate_saloon(saloon:&mut Saloon,rating:u64,ctx:&mut TxContext){
+
+    //check if rate is greater than zero and is less than 6
+       assert!(rating >0 && rating < 6,INVALIDRATING);
+
+      //rate
+      let newrate=Rate{
+        id:object::new(ctx),
+        rate:rating,
+        by:tx_context::sender(ctx)
+      };
+      //update vector rates
+      saloon.rates.push_back(newrate);
+
+      //emit event
+      event::emit(RateAdded{
+        by:tx_context::sender(ctx),
+        rating
+      });
+  }
+
+// pay for service
+public entry fun pay_for_service(saloon:&mut Saloon,serviceid:u64,amount:&mut Coin<SUI>,ctx:&mut TxContext){
+
+        let mut index:u64=0;
+        let user = tx_context::sender(ctx);
+        let serviceslength:u64=saloon.services.length();
+
+        while(index < serviceslength){
+        let service=&saloon.services[index];
+        if(service.id==serviceid){
+    //verify the user has sufficient amount to perform the transaction
+
+    assert!(amount.value()>=saloon.services[index].amount,INSUFFICIENTBALANCE);
+
+        let payamount=saloon.services[index].amount;
+
+        let pay=amount.split(payamount,ctx);
+         
+        put(&mut saloon.balance, pay);
+
+        // Generate a receipt
+        let receipt = Receipt {
+            id:object::new(ctx),
+            service_id: serviceid,
+            amount_paid: payamount,
+            user,
+    };
+        // Transfer the receipt to the user
+        transfer::public_transfer(receipt, user);
+         return
+     };
+            index=index+1;
+     };
+        abort 0
+}
+
+// get farm items details using the item id
+public fun view_saloon_details(saloon: &Saloon, saloonid: u64) : (u64, String, String, u64) {
+    let service = &saloon.services[saloonid];
+     (
+        service.id,
+        service.servicename,
+        service.servicedescription,
+        service.amount,
+
+    )
+}
+
+// Get saloon balance
+public fun get_saloon_balance(saloon: &Saloon): u64 {
+        saloon.balance.value()  
+    }
+
+//owner withdraw amount
+public entry fun withdraw_funds(
+        owner: &AdminCap,      
+        saloon: &mut Saloon,
+        amount:u64,
+        recipient:address,
+        ctx: &mut TxContext,
+    ) {
+
+    //verify amount is sufficient
+     assert!(amount > 0 && amount <= saloon.balance.value(), INSUFFICIENTBALANCE);
+
+    //ensure its the owner performing the action
+     assert!(&owner.saloonid==object::uid_as_inner(&saloon.id),EONLYOWNER);
+     let takeamount = take(&mut saloon.balance, amount, ctx);
+         transfer::public_transfer(takeamount, recipient);
+       
+        //emit event
+         event::emit(WithdrawAmount{
+            amount,
+            recipient
+        });
+    }
 
 
 
