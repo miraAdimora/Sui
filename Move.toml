@@ -1,5 +1,5 @@
 [package]
-name = "dacade_deepbook"
+name = "saloon"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 
 [dependencies]
@@ -7,4 +7,4 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 DeepBook = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/deepbook", rev = "framework/testnet" }
 
 [addresses]
-dacade_deepbook = "0x0"
+saloon = "0x0"

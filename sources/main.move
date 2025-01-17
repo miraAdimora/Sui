@@ -1,9 +1,10 @@
-module dacade_deepbook::saloon {
-// use sui::object::{Self, UID, ID};
+module saloon::saloon {
 use std::string::{String};
 use sui::coin::{Coin,split, put,take};
 use sui::balance::{Balance,zero};
+use sui::table::{Self, Table};
 // use std::option::{none,some};
+use sui::tx_context::{sender};
 use sui::sui::SUI;
 use sui::event;
 
@@ -22,6 +23,7 @@ public struct Saloon has key, store {
     balance:Balance<SUI>,
     services: vector<ServicesRendered>,
     rates:vector<Rate>,
+    review: Table<address,CustomerReview >
 }
 
 public struct ServicesRendered has store, drop {
@@ -48,21 +50,25 @@ public struct ServiceAdded has copy,drop{
     name:String
 }
 
-// public struct ServiceUpdated has copy, drop {
-//     name: String,
-//     servicedescription: String,
-//     amount: u64,
-// }
+  /// Customer Review struct
+public struct CustomerReview has store, copy, drop {
+    // by:address,
+    comments: String,     // Customer comments
+}
+
 // struct for price update 
 public struct PriceUpdated has copy,drop{
     name:String,
     new_amount:u64
 }
+
+// struct for description update 
 public struct DescriptionUpdated has copy,drop{
     name:String,
     new_description:String
 }
 
+// struct for adding rate update
 public struct RateAdded has copy,drop{
     by:address,
     rating:u64
@@ -97,6 +103,7 @@ public entry fun create_saloon( name: String, location: String, saloon_url: Stri
         balance:zero<SUI>(),
         services:vector::empty(),
         rates:vector::empty(),
+        review: table::new(ctx)
         };
 
   // Create the AdminCap associated with the farm
@@ -193,6 +200,16 @@ public entry fun rate_saloon(saloon:&mut Saloon,rating:u64,ctx:&mut TxContext){
       });
   }
 
+
+
+//function to comment on a saloon
+public entry fun comment_on_saloon(self: &mut Saloon, comments_: String, ctx: &mut TxContext) {
+    let review = CustomerReview {
+            comments: comments_
+    };
+        table::add(&mut self.review, sender(ctx), review);
+}
+
 // pay for service
 public entry fun pay_for_service(saloon:&mut Saloon,serviceid:u64,amount:&mut Coin<SUI>,ctx:&mut TxContext){
 
@@ -203,8 +220,8 @@ public entry fun pay_for_service(saloon:&mut Saloon,serviceid:u64,amount:&mut Co
         while(index < serviceslength){
         let service=&saloon.services[index];
         if(service.id==serviceid){
-    //verify the user has sufficient amount to perform the transaction
 
+    //verify the user has sufficient amount to perform the transaction
     assert!(amount.value()>=saloon.services[index].amount,INSUFFICIENTBALANCE);
 
         let payamount=saloon.services[index].amount;
@@ -229,8 +246,8 @@ public entry fun pay_for_service(saloon:&mut Saloon,serviceid:u64,amount:&mut Co
         abort 0
 }
 
-// get farm items details using the item id
-public fun view_services_details(saloon: &Saloon, saloonid: u64) : (u64, String, String, u64) {
+// get saloon info 
+public fun view_services_info(saloon: &Saloon, saloonid: u64) : (u64, String, String, u64) {
 
  //check if service is available
    assert!(saloonid <= saloon.services.length(),SERVICEDOESNOTEXISTS);
@@ -243,6 +260,7 @@ public fun view_services_details(saloon: &Saloon, saloonid: u64) : (u64, String,
 
     )
 }
+
 
 // Get saloon balance
 public fun get_saloon_balance(saloon: &Saloon): u64 {
