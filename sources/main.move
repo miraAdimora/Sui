@@ -3,7 +3,6 @@ use std::string::{String};
 use sui::coin::{Coin,split, put,take};
 use sui::balance::{Balance,zero};
 use sui::table::{Self, Table};
-// use std::option::{none,some};
 use sui::tx_context::{sender};
 use sui::sui::SUI;
 use sui::event;
