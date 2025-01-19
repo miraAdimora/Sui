@@ -266,6 +266,34 @@ public fun get_saloon_balance(saloon: &Saloon): u64 {
         saloon.balance.value()  
     }
 
+
+
+ //withdraw funds from payeasy
+
+ public entry fun withdraw_all_funds(
+        owner: &AdminCap,         
+        saloon: &mut Saloon,
+        recipient:address,
+        ctx: &mut TxContext,
+    ) {
+
+        //ensure its the owner performing the action
+        assert!(&owner.saloonid == object::uid_as_inner(&saloon.id),EONLYOWNER);
+
+        
+        let amounts=saloon.balance.value();
+        
+        let entireamount = take(&mut saloon.balance, amounts, ctx); 
+        transfer::public_transfer(entireamount, recipient);  
+
+        //emit event
+         event::emit(WithdrawAmount{
+            amount:amounts,
+            recipient
+        });
+       
+    }
+
 //owner withdraw amount
 public entry fun withdraw_funds(
         owner: &AdminCap,      
