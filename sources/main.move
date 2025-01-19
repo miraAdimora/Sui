@@ -49,9 +49,8 @@ public struct ServiceAdded has copy,drop{
     name:String
 }
 
-  /// Customer Review struct
+  /// Customer Comment struct
 public struct CustomerReview has store, copy, drop {
-    // by:address,
     comments: String,     // Customer comments
 }
 
@@ -79,6 +78,7 @@ public struct WithdrawAmount has copy,drop{
       recipient:address
 }
 
+// struct for receipt
 public  struct Receipt has key, store {
     id:UID,
     service_id: u64,
@@ -105,10 +105,10 @@ public entry fun create_saloon( name: String, location: String, saloon_url: Stri
         review: table::new(ctx)
         };
 
-  // Create the AdminCap associated with the farm
+  // Create the AdminCap associated with the saloon
     let admin_cap = AdminCap {
         id: object::new(ctx),  // Generate a new UID for AdminCap
-        saloonid,  // Associate the farm ID
+        saloonid,  // Associate the saloon ID
         };
 
         // Transfer the admin capability to the sender
@@ -250,6 +250,7 @@ public fun view_services_info(saloon: &Saloon, saloonid: u64) : (u64, String, St
 
  //check if service is available
    assert!(saloonid <= saloon.services.length(),SERVICEDOESNOTEXISTS);
+
     let service = &saloon.services[saloonid];
      (
         service.id,
@@ -268,8 +269,7 @@ public fun get_saloon_balance(saloon: &Saloon): u64 {
 
 
 
- //withdraw funds from payeasy
-
+ //withdraw all funds from a Saloon
  public entry fun withdraw_all_funds(
         owner: &AdminCap,         
         saloon: &mut Saloon,
@@ -294,7 +294,7 @@ public fun get_saloon_balance(saloon: &Saloon): u64 {
        
     }
 
-//owner withdraw amount
+//owner withdraw a specific amount
 public entry fun withdraw_funds(
         owner: &AdminCap,      
         saloon: &mut Saloon,
